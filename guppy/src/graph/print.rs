@@ -14,7 +14,7 @@ use std::fmt;
 pub trait PackageDotVisitor {
     /// Visits this package. The implementation may output a label for this package to the given
     /// `DotWrite`.
-    fn visit_package(&self, package: &PackageMetadata, f: DotWrite<'_, '_>) -> fmt::Result;
+    fn visit_package(&self, package: PackageMetadata<'_>, f: DotWrite<'_, '_>) -> fmt::Result;
 
     /// Visits this dependency link. The implementation may output a label for this link to the
     /// given `DotWrite`.

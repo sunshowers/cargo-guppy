@@ -21,7 +21,7 @@ use std::fmt;
 struct PackageNameVisitor;
 
 impl PackageDotVisitor for PackageNameVisitor {
-    fn visit_package(&self, package: &PackageMetadata, mut f: DotWrite<'_, '_>) -> fmt::Result {
+    fn visit_package(&self, package: PackageMetadata<'_>, mut f: DotWrite<'_, '_>) -> fmt::Result {
         // Print out the name of the package. Other metadata can also be printed out.
         //
         // If you need to look at data for other packages, store a reference to the PackageGraph in
@@ -30,7 +30,7 @@ impl PackageDotVisitor for PackageNameVisitor {
     }
 
     fn visit_link(&self, link: DependencyLink<'_>, mut f: DotWrite<'_, '_>) -> fmt::Result {
-        if link.edge.dev_only() {
+        if link.edge().dev_only() {
             write!(f, "dev-only")
         } else {
             // Don't print out anything if this isn't a dev-only link.

@@ -61,7 +61,7 @@ arg_enum! {
 struct NameVisitor;
 
 impl PackageDotVisitor for NameVisitor {
-    fn visit_package(&self, package: &PackageMetadata, mut f: DotWrite<'_, '_>) -> fmt::Result {
+    fn visit_package(&self, package: PackageMetadata<'_>, mut f: DotWrite<'_, '_>) -> fmt::Result {
         write!(f, "{}", package.name())
     }
 
@@ -149,7 +149,8 @@ pub fn cmd_select(options: &SelectOptions) -> Result<(), anyhow::Error> {
         }
     }
 
-    pkg_graph.retain_edges(|_, DependencyLink { from, to, edge }| {
+    pkg_graph.retain_edges(|link| {
+        let (from, to, edge) = (link.from(), link.to(), link.edge());
         // filter by the kind of dependency (--kind)
         let include_kind = match options.filter_opts.kind {
             Kind::All | Kind::ThirdParty => true,

@@ -166,7 +166,7 @@ impl<'g> PackageSelect<'g> {
     pub fn into_root_metadatas(
         self,
         direction: DependencyDirection,
-    ) -> impl Iterator<Item = &'g PackageMetadata> + ExactSizeIterator + 'g {
+    ) -> impl Iterator<Item = PackageMetadata<'g>> + ExactSizeIterator + 'g {
         let dep_graph = self.package_graph.dep_graph();
         let (_, roots) = select_postfilter(dep_graph, self.params.clone(), direction);
         roots.into_iter().map(move |node_idx| {
@@ -357,7 +357,7 @@ impl<'g> ExactSizeIterator for IntoIterIds<'g> {
 
 /// An iterator over package metadata in topological order.
 ///
-/// The items returned are of type `&'g PackageMetadata`. Returned by `PackageSelect::into_iter_metadatas`.
+/// The items returned are of type `PackageMetadata<'g>`. Returned by `PackageSelect::into_iter_metadatas`.
 #[derive(Clone, Debug)]
 pub struct IntoIterMetadatas<'g> {
     package_graph: &'g PackageGraph,
@@ -372,7 +372,7 @@ impl<'g> IntoIterMetadatas<'g> {
 }
 
 impl<'g> Iterator for IntoIterMetadatas<'g> {
-    type Item = &'g PackageMetadata;
+    type Item = PackageMetadata<'g>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let next_id = self.inner.next()?;

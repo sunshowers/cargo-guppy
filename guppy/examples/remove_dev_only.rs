@@ -32,15 +32,15 @@ fn main() -> Result<(), Error> {
     println!("number of packages before: {}", before_count);
 
     // `retain_edges` takes a closure that returns `true` if this edge should be kept in the graph.
-    package_graph.retain_edges(|_data, link| {
+    package_graph.retain_edges(|link| {
         // '_data' contains metadata for every package. It isn't used in this example but some
         // complex filters may make use of it.
 
-        if link.edge.dev_only() {
+        if link.edge().dev_only() {
             println!(
                 "filtering out dev-only link: {} -> {}",
-                link.from.name(),
-                link.to.name()
+                link.from().name(),
+                link.to().name()
             );
             return false;
         }
@@ -49,7 +49,7 @@ fn main() -> Result<(), Error> {
 
     // Iterate over all links and assert that there are no dev-only links.
     for link in package_graph.select_all().into_iter_links(None) {
-        assert!(!link.edge.dev_only());
+        assert!(!link.edge().dev_only());
     }
 
     // Count the number of packages after.

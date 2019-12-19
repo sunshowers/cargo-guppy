@@ -55,7 +55,7 @@ fn main() -> Result<(), Error> {
                 links.map(|link| {
                     // Since we're iterating over transitive dependencies, we use the 'to' ID here.
                     // If we were iterating over transitive reverse deps, we'd use the 'from' ID.
-                    (link.to.id(), link.to)
+                    (link.to().id(), link.to())
                 })
             })
             .collect();

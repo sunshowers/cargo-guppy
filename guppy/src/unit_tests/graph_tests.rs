@@ -24,9 +24,12 @@ fn metadata1() {
     assert_eq!(root_deps.len(), 1, "the root crate has one dependency");
     let dep = root_deps.pop().expect("the root crate has one dependency");
     // XXX test for details of dependency edges as well?
-    assert!(dep.edge.normal().is_some(), "normal dependency is defined");
-    assert!(dep.edge.build().is_some(), "build dependency is defined");
-    assert!(dep.edge.dev().is_some(), "dev dependency is defined");
+    assert!(
+        dep.edge().normal().is_some(),
+        "normal dependency is defined"
+    );
+    assert!(dep.edge().build().is_some(), "build dependency is defined");
+    assert!(dep.edge().dev().is_some(), "dev dependency is defined");
 
     // Print out dot graphs for small subgraphs.
     static EXPECTED_DOT: &str = r#"digraph {
@@ -101,11 +104,11 @@ proptest_suite!(metadata_libra);
 struct NameVisitor;
 
 impl PackageDotVisitor for NameVisitor {
-    fn visit_package(&self, package: &PackageMetadata, mut f: DotWrite<'_, '_>) -> fmt::Result {
+    fn visit_package(&self, package: PackageMetadata<'_>, mut f: DotWrite<'_, '_>) -> fmt::Result {
         write!(f, "{}", package.name())
     }
 
     fn visit_link(&self, link: DependencyLink<'_>, mut f: DotWrite<'_, '_>) -> fmt::Result {
-        write!(f, "{}", link.edge.dep_name())
+        write!(f, "{}", link.edge().dep_name())
     }
 }

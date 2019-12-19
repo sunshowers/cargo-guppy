@@ -3,20 +3,20 @@
 
 use crate::graph::{
     DependencyDirection, DependencyEdge, DependencyLink, DependsCache, PackageGraph,
-    PackageMetadata,
+    PackageMetadata, PackageMetadataInner,
 };
 use crate::unit_tests::fixtures::PackageDetails;
 use crate::PackageId;
 use std::collections::{BTreeSet, HashSet};
 use std::iter;
 
-fn __from_metadata<'a>(dep: &DependencyLink<'a>) -> &'a PackageMetadata {
-    dep.from
+fn __from_metadata<'a>(dep: &DependencyLink<'a>) -> PackageMetadata<'a> {
+    dep.from()
 }
-fn __to_metadata<'a>(dep: &DependencyLink<'a>) -> &'a PackageMetadata {
-    dep.to
+fn __to_metadata<'a>(dep: &DependencyLink<'a>) -> PackageMetadata<'a> {
+    dep.to()
 }
-type DepToMetadata<'a> = fn(&DependencyLink<'a>) -> &'a PackageMetadata;
+type DepToMetadata<'a> = fn(&DependencyLink<'a>) -> PackageMetadata<'a>;
 
 /// Some of the messages are different based on whether we're testing forward deps or reverse
 /// ones. For forward deps, we use the terms "known" for 'from' and "variable" for 'to'. For
@@ -58,11 +58,11 @@ impl<'a> DirectionDesc<'a> {
         }
     }
 
-    fn known_metadata(&self, dep: &DependencyLink<'a>) -> &'a PackageMetadata {
+    fn known_metadata(&self, dep: &DependencyLink<'a>) -> PackageMetadata<'a> {
         (self.known_metadata)(dep)
     }
 
-    fn variable_metadata(&self, dep: &DependencyLink<'a>) -> &'a PackageMetadata {
+    fn variable_metadata(&self, dep: &DependencyLink<'a>) -> PackageMetadata<'a> {
         (self.variable_metadata)(dep)
     }
 }
@@ -102,8 +102,8 @@ pub(crate) fn assert_deps_internal(
         .iter()
         .map(|dep| {
             (
-                dep.edge.dep_name(),
-                dep.edge.resolved_name().to_string(),
+                dep.edge().dep_name(),
+                dep.edge().resolved_name().to_string(),
                 desc.variable_metadata(&dep).id(),
             )
         })
@@ -173,7 +173,7 @@ pub(crate) fn assert_transitive_deps_internal(
     // Use a BTreeSet for unique identifiers. This is also used later for set operations.
     let ids_from_links_set: BTreeSet<_> = actual_deps
         .iter()
-        .flat_map(|dep| vec![dep.from.id(), dep.to.id()])
+        .flat_map(|dep| vec![dep.from().id(), dep.to().id()])
         .collect();
     let ids_from_links: Vec<_> = ids_from_links_set.iter().copied().collect();
 
@@ -253,7 +253,7 @@ pub(crate) fn assert_transitive_deps_internal(
                 )
             })
             .into_iter_links(None)
-            .flat_map(|dep| vec![dep.from.id(), dep.to.id()])
+            .flat_map(|dep| vec![dep.from().id(), dep.to().id()])
             .collect();
         // Use difference instead of is_subset/is_superset for better error messages.
         let difference: Vec<_> = dep_ids_from_links.difference(&ids_from_links_set).collect();
@@ -465,19 +465,13 @@ pub(crate) fn assert_link_order<'g>(
 fn dep_link_ptrs<'g>(
     dep_links: impl IntoIterator<Item = DependencyLink<'g>>,
 ) -> Vec<(
-    *const PackageMetadata,
-    *const PackageMetadata,
+    *const PackageMetadataInner,
+    *const PackageMetadataInner,
     *const DependencyEdge,
 )> {
     let mut triples: Vec<_> = dep_links
         .into_iter()
-        .map(|link| {
-            (
-                link.from as *const _,
-                link.to as *const _,
-                link.edge as *const _,
-            )
-        })
+        .map(|link| link.ptr_triple())
         .collect();
     triples.sort();
     triples

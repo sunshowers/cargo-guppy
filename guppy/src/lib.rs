@@ -36,7 +36,7 @@
 //! for link in package_graph.dep_links(&package_id).unwrap() {
 //!     // A dependency link contains `from`, `to` and `edge`. The edge has information about e.g.
 //!     // whether this is a build dependency.
-//!     println!("direct dependency: {}", link.to.id());
+//!     println!("direct dependency: {}", link.to().id());
 //! }
 //! ```
 //!

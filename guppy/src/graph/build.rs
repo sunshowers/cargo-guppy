@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use crate::graph::{
-    kind_str, DependencyEdge, DependencyMetadata, PackageGraph, PackageGraphData, PackageMetadata,
-    Workspace,
+    kind_str, DependencyEdge, DependencyMetadata, PackageGraph, PackageGraphData,
+    PackageMetadataInner, Workspace,
 };
 use crate::{Error, Metadata, PackageId};
 use cargo_metadata::{Dependency, DependencyKind, NodeDep, Package, Resolve};
@@ -54,7 +54,7 @@ impl Workspace {
     /// Indexes and creates a new workspace.
     fn new(
         workspace_root: impl Into<PathBuf>,
-        packages: &HashMap<PackageId, PackageMetadata>,
+        packages: &HashMap<PackageId, PackageMetadataInner>,
         members: impl IntoIterator<Item = PackageId>,
     ) -> Result<Self, Error> {
         let workspace_root = workspace_root.into();
@@ -70,14 +70,14 @@ impl Workspace {
                         id
                     ))
                 })?;
-                let workspace_path = package_metadata.workspace_path().ok_or_else(|| {
+                let workspace_path = package_metadata.workspace_path.clone().ok_or_else(|| {
                     Error::PackageGraphConstructError(format!(
                         "workspace member '{}' at path {:?} not in workspace",
                         id,
-                        package_metadata.manifest_path(),
+                        package_metadata.manifest_path.clone(),
                     ))
                 })?;
-                Ok((workspace_path.to_path_buf(), id))
+                Ok((workspace_path, id))
             })
             .collect::<Result<BTreeMap<PathBuf, PackageId>, Error>>()?;
 
@@ -132,7 +132,10 @@ impl<'a> GraphBuildState<'a> {
         }
     }
 
-    fn process_package(&mut self, package: Package) -> Result<(PackageId, PackageMetadata), Error> {
+    fn process_package(
+        &mut self,
+        package: Package,
+    ) -> Result<(PackageId, PackageMetadataInner), Error> {
         let (node_idx, _, _) = self.package_data(&package.id)?;
 
         let workspace_path = if self.workspace_members.contains(&package.id) {
@@ -169,7 +172,7 @@ impl<'a> GraphBuildState<'a> {
 
         Ok((
             package.id.clone(),
-            PackageMetadata {
+            PackageMetadataInner {
                 id: package.id,
                 name: package.name,
                 version: package.version,

@@ -22,7 +22,7 @@ fn main() -> Result<(), Error> {
     for link in package_graph.dep_links(&package_id).unwrap() {
         // A dependency link contains `from`, `to` and `edge`. The edge has information about e.g.
         // whether this is a build dependency.
-        println!("direct: {}", link.to.id());
+        println!("direct: {}", link.to().id());
     }
 
     // Transitive dependencies are obtained through the `select_` APIs. They are always presented in

@@ -58,6 +58,19 @@ pub(crate) static METADATA_CYCLE2_LOWER_A: &str =
 pub(crate) static METADATA_CYCLE2_LOWER_B: &str =
     "lower-b 0.1.0 (path+file:///Users/fakeuser/local/testcrates/cycle2/lower-b)";
 
+pub(crate) static METADATA_TARGETS1: &str =
+    include_str!("../../fixtures/small/metadata_targets1.json");
+pub(crate) static METADATA_TARGETS1_TESTCRATE: &str =
+    "testcrate-targets 0.1.0 (path+file:///Users/fakeuser/local/testcrates/testcrate-targets)";
+pub(crate) static METADATA_TARGETS1_LAZY_STATIC_1: &str =
+    "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)";
+pub(crate) static METADATA_TARGETS1_LAZY_STATIC_02: &str =
+    "lazy_static 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)";
+pub(crate) static METADATA_TARGETS1_LAZY_STATIC_01: &str =
+    "lazy_static 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)";
+pub(crate) static METADATA_TARGETS1_BYTES: &str =
+    "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)";
+
 pub(crate) static METADATA_LIBRA: &str = include_str!("../../fixtures/large/metadata_libra.json");
 pub(crate) static METADATA_LIBRA_ADMISSION_CONTROL_SERVICE: &str =
     "admission-control-service 0.1.0 (path+file:///Users/fakeuser/local/libra/admission_control/admission-control-service)";
@@ -222,6 +235,13 @@ impl Fixture {
         Self {
             graph: Self::parse_graph(METADATA_CYCLE2),
             details: FixtureDetails::metadata_cycle2(),
+        }
+    }
+
+    pub(crate) fn metadata_targets1() -> Self {
+        Self {
+            graph: Self::parse_graph(METADATA_TARGETS1),
+            details: FixtureDetails::metadata_targets1(),
         }
     }
 
@@ -735,6 +755,29 @@ impl FixtureDetails {
                 vec![METADATA_CYCLE2_UPPER_A, METADATA_CYCLE2_UPPER_B],
                 vec![METADATA_CYCLE2_LOWER_A, METADATA_CYCLE2_LOWER_B],
             ])
+    }
+
+    pub(crate) fn metadata_targets1() -> Self {
+
+        let mut details = HashMap::new();
+
+        PackageDetails::new(
+            METADATA_TARGETS1_TESTCRATE,
+            "testcrate-targets",
+            "0.1.0",
+            vec![FAKE_AUTHOR],
+            None,
+            None,
+        )
+        .with_deps(vec![
+            ("lazy_static", METADATA_TARGETS1_LAZY_STATIC_1),
+            ("lazy_static", METADATA_TARGETS1_LAZY_STATIC_02),
+            ("lazy_static", METADATA_TARGETS1_LAZY_STATIC_01),
+            ("bytes", METADATA_TARGETS1_BYTES),
+        ])
+        .insert_into(&mut details);
+
+        Self::new(details).with_workspace_members(vec![("", METADATA_TARGETS1_TESTCRATE)])
     }
 
     pub(crate) fn metadata_libra() -> Self {

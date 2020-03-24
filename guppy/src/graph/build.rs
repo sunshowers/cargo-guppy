@@ -6,7 +6,7 @@ use crate::graph::{
     PackageGraphData, PackageIx, PackageMetadata, Workspace,
 };
 use crate::{Error, Metadata, PackageId};
-use cargo_metadata::{Dependency, DependencyKind, NodeDep, Package, Resolve};
+use cargo_metadata::{DepKindInfo, Dependency, DependencyKind, NodeDep, Package, Resolve};
 use once_cell::sync::OnceCell;
 use petgraph::prelude::*;
 use semver::Version;
@@ -467,16 +467,24 @@ impl DependencyEdge {
                 target: dep.target.as_ref().map(|t| format!("{}", t)),
             };
 
-            // It is typically an error for the same dependency to be listed multiple times for
-            // the same kind, but there are some situations in which it's possible. The main one
-            // is if there's a custom 'target' field -- one real world example is at
-            // https://github.com/alexcrichton/flate2-rs/blob/5751ad9/Cargo.toml#L29-L33:
+            // It is possible to specify a dependency several times within the same section through
+            // platform-specific dependencies and the [target] section. For example:
+            // https://github.com/alexcrichton/flate2-rs/blob/5751ad9/Cargo.toml#L29-L33
             //
             // [dependencies]
             // miniz_oxide = { version = "0.3.2", optional = true}
             //
             // [target.'cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))'.dependencies]
             // miniz_oxide = "0.3.2"
+            //
+            // (For the rest of the text, each separate time a particular version of a dependency
+            // is listed, it is called an "instance".)
+            //
+            // For such situations, there are two separate analyses that happen:
+            //
+            // 1. Whether the dependency is included at all.
+            //
+            // If *any*
             //
             // For now, prefer target = null (the more general target) in such cases, and error out
             // if both sides are null.
@@ -518,3 +526,24 @@ impl DependencyEdge {
         })
     }
 }
+
+struct DependencyBuildState {
+    version_predicates: HashSet<semver_parser::range::Predicate>,
+    mandatory_for: TargetBuiltWhen,
+    optional_for: TargetBuiltWhen,
+    mandatory_features: Vec<String>,
+    optional_features: Vec<String>,
+}
+
+struct DependencyBuildStateInner {
+    targets: TargetBuiltWhen,
+    default_features: bool,
+    features: Vec<String>,
+}
+
+enum TargetBuiltWhen {
+    Always,
+    ForTargets(Vec<Box<str>>),
+    Never,
+}
+

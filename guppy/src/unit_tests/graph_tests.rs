@@ -13,6 +13,7 @@ use std::iter;
 mod small {
     use super::*;
     use pretty_assertions::assert_eq;
+    use crate::unit_tests::fixtures::package_id;
 
     // Test specific details extracted from metadata1.json.
     #[test]
@@ -143,6 +144,51 @@ mod small {
     }
 
     proptest_suite!(metadata_cycle2);
+
+    #[test]
+    fn metadata_targets1() {
+        // TODO: Figure out the resolution logic here -- it looks like it works on two levels:
+        // 1. If a package is included at all
+        // 2. Given that it is included, what features it's built with
+        //
+        // Also check for the difference between cargo metadata --all-features and just cargo
+        // metadata.
+
+        // for the testcrate:
+        //
+        // [dependencies]
+        // lazy_static = "1"
+        // bytes = { version = "0.5", optional = true, default-features = false, features = ["serde"] }
+        //
+        // [target.'cfg(not(windows))'.dependencies]
+        // lazy_static = "0.2"
+        //
+        // [target.'cfg(windows)'.dev-dependencies]
+        // lazy_static = "0.1"
+        //
+        // [target.'cfg(target_arch = "x86_64")'.dependencies]
+        // bytes = { version = "0.5", optional = false, default-features = false, features = ["std"] }
+        //
+        // [target.x86_64-unknown-linux-gnu.dependencies]
+        // bytes = "0.5"
+
+        let metadata_targets1 = Fixture::metadata_targets1();
+        metadata_targets1.verify();
+
+        let graph = metadata_targets1.graph();
+        let mut bytes_links: Vec<_> =
+            graph.dep_links(&package_id(fixtures::METADATA_TARGETS1_TESTCRATE))
+                .expect("valid package ID")
+                .filter(|link| link.to.name() == "bytes")
+                .collect();
+        assert_eq!(bytes_links.len(), 1, "only one 'bytes' link should exist");
+        let bytes_link = bytes_links.pop().unwrap();
+
+        let metadata = bytes_link.edge.normal().expect("bytes is a normal dependency");
+        assert_eq!(metadata.features(), &["default".to_string(), "std".to_string()]);
+    }
+
+    proptest_suite!(metadata_targets1);
 }
 
 mod large {

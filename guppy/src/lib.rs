@@ -48,10 +48,12 @@
 pub mod errors;
 pub mod graph;
 pub(crate) mod petgraph_support;
+pub(crate) mod platform;
 #[cfg(test)]
 mod unit_tests;
 
 pub use errors::Error;
+pub use platform::current_platform;
 
 // Public re-exports for upstream crates used in APIs. The no_inline ensures that they show up as
 // re-exports in documentation.

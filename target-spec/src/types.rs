@@ -29,7 +29,7 @@ use std::str::FromStr;
 /// assert!(!spec.eval(&x86_64_mac).unwrap(), "x86_64 MacOS matches no features");
 /// assert!(spec.eval(&i686_linux).unwrap(), "i686 Linux matches some features");
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TargetSpec {
     target: TargetEnum,
 }

@@ -758,7 +758,6 @@ impl FixtureDetails {
     }
 
     pub(crate) fn metadata_targets1() -> Self {
-
         let mut details = HashMap::new();
 
         PackageDetails::new(

@@ -12,8 +12,8 @@ use std::iter;
 
 mod small {
     use super::*;
-    use pretty_assertions::assert_eq;
     use crate::unit_tests::fixtures::package_id;
+    use pretty_assertions::assert_eq;
 
     // Test specific details extracted from metadata1.json.
     #[test]
@@ -176,16 +176,22 @@ mod small {
         metadata_targets1.verify();
 
         let graph = metadata_targets1.graph();
-        let mut bytes_links: Vec<_> =
-            graph.dep_links(&package_id(fixtures::METADATA_TARGETS1_TESTCRATE))
-                .expect("valid package ID")
-                .filter(|link| link.to.name() == "bytes")
-                .collect();
+        let mut bytes_links: Vec<_> = graph
+            .dep_links(&package_id(fixtures::METADATA_TARGETS1_TESTCRATE))
+            .expect("valid package ID")
+            .filter(|link| link.to.name() == "bytes")
+            .collect();
         assert_eq!(bytes_links.len(), 1, "only one 'bytes' link should exist");
         let bytes_link = bytes_links.pop().unwrap();
 
-        let metadata = bytes_link.edge.normal().expect("bytes is a normal dependency");
-        assert_eq!(metadata.features(), &["default".to_string(), "std".to_string()]);
+        let metadata = bytes_link
+            .edge
+            .normal()
+            .expect("bytes is a normal dependency");
+        assert_eq!(
+            metadata.features(),
+            &["default".to_string(), "std".to_string()]
+        );
     }
 
     proptest_suite!(metadata_targets1);

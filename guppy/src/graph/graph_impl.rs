@@ -16,6 +16,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter;
 use std::mem;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use target_spec::{EvalError, TargetSpec};
 
 /// A graph of packages and dependencies between them, parsed from metadata returned by `cargo
 /// metadata`.
@@ -787,10 +789,16 @@ impl DependencyEdge {
 #[derive(Clone, Debug)]
 pub struct DependencyMetadata {
     pub(super) version_req: VersionReq,
-    pub(super) optional: bool,
-    pub(super) uses_default_features: bool,
-    pub(super) features: Vec<String>,
-    pub(super) target: Option<String>,
+    pub(super) dependency_req: DependencyReq,
+
+    // Results of some queries as evaluated on the current platform.
+    pub(super) current_status: DependencyStatus,
+    pub(super) current_default_features: DependencyStatus,
+    pub(super) all_features: Vec<String>,
+
+    // single_target is deprecated -- it is only Some if there's exactly one instance of this
+    // dependency.
+    pub(super) single_target: Option<String>,
 }
 
 impl DependencyMetadata {
@@ -809,19 +817,63 @@ impl DependencyMetadata {
         &self.version_req
     }
 
-    /// Returns true if this is an optional dependency.
+    /// Returns true if this is an optional dependency on the platform `guppy` is running on.
+    ///
+    /// This will also return true if this dependency will never be included on this platform at
+    /// all. To get finer-grained information, use the `build_status` method instead.
     pub fn optional(&self) -> bool {
-        self.optional
+        self.current_status != DependencyStatus::Mandatory
     }
 
-    /// Returns true if the default features of this dependency are enabled.
+    /// Returns the build status of this dependency on the platform `guppy` is running on.
+    ///
+    /// See the documentation for `DependencyStatus` for more.
+    pub fn build_status(&self) -> DependencyStatus {
+        self.current_status
+    }
+
+    /// Returns the status of this dependency on the given platform (target triple).
+    ///
+    /// The list of target triples is specified on the [Rust
+    /// Forge](https://forge.rust-lang.org/release/platform-support.html).
+    ///
+    /// Returns an error if the triple wasn't recognized or if an error happened during evaluation.
+    pub fn build_status_on(&self, platform: &str) -> Result<DependencyStatus, Error> {
+        self.dependency_req.build_status_on(platform)
+    }
+
+    /// Returns true if the default features of this dependency are enabled on the platform `guppy`
+    /// is running on.
+    ///
+    /// It is possible for default features to be turned off by default, but be optionally included.
+    /// This method returns true in those cases. To get finer-grained information, use
+    /// the `default_features` method instead.
     pub fn uses_default_features(&self) -> bool {
-        self.uses_default_features
+        self.current_default_features != DependencyStatus::Never
     }
 
-    /// Returns a list of the features enabled by this dependency.
+    /// Returns the status of default features on the platform `guppy` is running on.
+    ///
+    /// See the documentation for `DependencyStatus` for more.
+    pub fn default_features(&self) -> DependencyStatus {
+        self.current_default_features
+    }
+
+    /// Returns the status of default features of this dependency on the given platform (target
+    /// triple).
+    ///
+    /// The list of target triples is specified on the [Rust
+    /// Forge](https://forge.rust-lang.org/release/platform-support.html).
+    ///
+    /// Returns an error if the triple wasn't recognized or if an error happened during evaluation.
+    pub fn default_features_on(&self, platform: &str) -> Result<DependencyStatus, Error> {
+        self.dependency_req.default_features_on(platform)
+    }
+
+    /// Returns a list of every feature enabled by this dependency. This includes features that
+    /// are only turned on if the dependency is optional.
     pub fn features(&self) -> &[String] {
-        &self.features
+        &self.all_features
     }
 
     /// Returns the target string for this dependency, if specified. This is a string like
@@ -829,7 +881,131 @@ impl DependencyMetadata {
     ///
     /// See [Platform specific dependencies](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#platform-specific-dependencies)
     /// in the Cargo reference for more details.
+    ///
+    /// This will return `None` if this dependency is specified for more than one target
+    /// (including unconditionally, as e.g. `[dependencies]`). Therefore, this is deprecated in
+    /// favor of the `build_status_on` and `default_features_on` methods.
+    #[deprecated(
+        since = "0.1.7",
+        note = "use `build_status_on` and `default_features_on` instead"
+    )]
     pub fn target(&self) -> Option<&str> {
-        self.target.as_deref()
+        self.single_target.as_deref()
+    }
+}
+
+/// Whether a dependency is included, or whether default features are included, on a specific
+/// platform.
+///
+/// ## Examples
+///
+/// ```toml
+/// [dependencies]
+/// once_cell = "1"
+/// ```
+///
+/// The dependency and default features are *mandatory* on all platforms.
+///
+/// ```toml
+/// [dependencies]
+/// once_cell = { version = "1", optional = true }
+/// ```
+///
+/// The dependency and default features are *optional* on all platforms.
+///
+/// ```toml
+/// [target.'cfg(windows)'.dependencies]
+/// once_cell = { version = "1", optional = true }
+/// ```
+///
+/// On Windows, the dependency and default features are both *optional*. On non-Windows platforms,
+/// the dependency and default features are *never* included.
+///
+/// ```toml
+/// [dependencies]
+/// once_cell = { version = "1", optional = true }
+///
+/// [target.'cfg(windows)'.dependencies]
+/// once_cell = { version = "1", optional = false, default-features = false }
+/// ```
+///
+/// On Windows, the dependency is mandatory and default features are optional (i.e. enabled if the
+/// `once_cell` feature is turned on).
+///
+/// On Unix platforms, the dependency and default features are both optional.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum DependencyStatus {
+    /// This dependency or default features are always included in the build on this platform.
+    Mandatory,
+    /// This dependency or default features are optionally included in the build on this platform.
+    Optional,
+    /// This dependency or default features are never included in the build in this platform, even
+    /// if the optional dependency is turned on.
+    Never,
+}
+
+/// Information about dependency requirements.
+#[derive(Clone, Debug, Default)]
+pub(super) struct DependencyReq {
+    pub(super) mandatory: DependencyReqImpl,
+    pub(super) optional: DependencyReqImpl,
+}
+
+impl DependencyReq {
+    pub(super) fn build_status_on(&self, platform: &str) -> Result<DependencyStatus, Error> {
+        self.eval(|req_impl| &req_impl.build_if, platform)
+    }
+
+    pub(super) fn default_features_on(&self, platform: &str) -> Result<DependencyStatus, Error> {
+        self.eval(|req_impl| &req_impl.default_features_if, platform)
+    }
+
+    fn eval(
+        &self,
+        pred_fn: impl Fn(&DependencyReqImpl) -> &TargetPredicate,
+        platform: &str,
+    ) -> Result<DependencyStatus, Error> {
+        let map_err = move |err: EvalError| Error::TargetEvalError {
+            platform: platform.into(),
+            err: Box::new(err),
+        };
+        if pred_fn(&self.mandatory).eval(platform).map_err(map_err)? {
+            return Ok(DependencyStatus::Mandatory);
+        }
+        if pred_fn(&self.optional).eval(platform).map_err(map_err)? {
+            return Ok(DependencyStatus::Optional);
+        }
+        Ok(DependencyStatus::Never)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct DependencyReqImpl {
+    pub(super) build_if: TargetPredicate,
+    pub(super) default_features_if: TargetPredicate,
+    pub(super) target_features: Vec<(Option<Arc<TargetSpec>>, Vec<String>)>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) enum TargetPredicate {
+    Always,
+    // Empty vector means never.
+    Specs(Vec<Arc<TargetSpec>>),
+}
+
+impl TargetPredicate {
+    /// Evaluates this target against the given platform triple.
+    pub(super) fn eval(&self, platform: &str) -> Result<bool, EvalError> {
+        match self {
+            TargetPredicate::Always => Ok(true),
+            TargetPredicate::Specs(specs) => {
+                for spec in specs.iter() {
+                    if spec.eval(platform)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+        }
     }
 }

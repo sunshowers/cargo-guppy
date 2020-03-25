@@ -92,7 +92,16 @@ fn eval_expr(spec: &Expr, platform: &Platform) -> Result<bool, EvalError> {
         Expr::TestSet(Atom::Ident(ref family)) => match family.as_str() {
             "windows" => Ok(platform.target_os == OS::Windows),
             "unix" => Ok(platform.target_os == OS::Linux || platform.target_os == OS::MacOS),
-            _ => Err(EvalError::UnknownOption(family.clone())),
+            "test" | "debug_assertions" | "proc_macro" => {
+                // Known families that always evaluate to false. List grabbed from
+                // https://docs.rs/cargo-platform/0.1.1/src/cargo_platform/lib.rs.html#76.
+                Ok(false)
+            }
+            _ => {
+                // An unknown family.
+                // TODO: we may want to evaluate these to false as well, not sure.
+                Err(EvalError::UnknownOption(family.clone()))
+            },
         },
         // supports only target_os currently
         Expr::TestEqual((Atom::Ident(ref name), Atom::Value(ref value))) => {
@@ -166,5 +175,30 @@ mod tests {
             ),
             Ok(true),
         );
+    }
+
+    #[test]
+    fn test_bogus_families() {
+        // Known bogus families.
+        for family in &["test", "debug_assertions", "proc_macro"] {
+            let cfg = format!("cfg({})", family);
+            let cfg_not = format!("cfg(not({}))", family);
+            assert_eq!(eval(&cfg, "x86_64-unknown-linux-gnu"), Ok(false));
+            assert_eq!(eval(&cfg_not, "x86_64-unknown-linux-gnu"), Ok(true));
+        }
+
+        // Unknown bogus families.
+        for family in &["foo", "bar", "nonsense"] {
+            let cfg = format!("cfg({})", family);
+            let cfg_not = format!("cfg(not({}))", family);
+            assert!(matches!(
+                eval(&cfg, "x86_64-unknown-linux-gnu"),
+                Err(EvalError::UnknownOption(_))
+            ));
+            assert!(matches!(
+                eval(&cfg_not, "x86_64-unknown-linux-gnu"),
+                Err(EvalError::UnknownOption(_))
+            ));
+        }
     }
 }

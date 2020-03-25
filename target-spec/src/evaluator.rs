@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use crate::parser::ParseError;
+use crate::platform::{Platform, TargetFeatures};
 use crate::types::{Atom, Expr, TargetEnum};
 use crate::TargetSpec;
-use platforms::{target::OS, Platform};
+use platforms::target::OS;
 use std::{error, fmt};
 
 /// An error that occurred during target evaluation.
@@ -45,25 +46,28 @@ impl error::Error for EvalError {
 
 /// Evaluates the given spec against the provided target and returns true on a successful match.
 ///
+/// This defaults to matching all target features. For more advanced use, see `TargetSpec::eval`.
+///
 /// For more information, see the crate-level documentation.
 pub fn eval(spec_or_triple: &str, platform: &str) -> Result<bool, EvalError> {
     let target_spec = spec_or_triple
         .parse::<TargetSpec>()
         .map_err(EvalError::InvalidSpec)?;
-    target_spec.eval(platform)
-}
-
-pub(crate) fn eval_target(target: &TargetEnum, platform: &str) -> Result<bool, EvalError> {
-    match platforms::find(platform) {
+    match Platform::new(platform, TargetFeatures::All) {
         None => Err(EvalError::TargetNotFound),
-        Some(platform) => match target {
-            TargetEnum::Triple(ref triple) => Ok(platform.target_triple == triple),
-            TargetEnum::Spec(ref expr) => eval_expr(expr, &platform),
-        },
+        Some(platform) => target_spec.eval(&platform),
     }
 }
 
-fn eval_expr(spec: &Expr, platform: &Platform) -> Result<bool, EvalError> {
+pub(crate) fn eval_target(target: &TargetEnum, platform: &Platform<'_>) -> Result<bool, EvalError> {
+    match target {
+        TargetEnum::Triple(ref triple) => Ok(platform.triple() == triple),
+        TargetEnum::Spec(ref expr) => eval_expr(expr, platform),
+    }
+}
+
+fn eval_expr(spec: &Expr, platform: &Platform<'_>) -> Result<bool, EvalError> {
+    let platform_ = platform.platform();
     match *spec {
         Expr::Any(ref exprs) => {
             for e in exprs {
@@ -90,8 +94,8 @@ fn eval_expr(spec: &Expr, platform: &Platform) -> Result<bool, EvalError> {
         Expr::Not(ref expr) => eval_expr(expr, platform).map(|b| !b),
         // target_family can be either unix or windows
         Expr::TestSet(Atom::Ident(ref family)) => match family.as_str() {
-            "windows" => Ok(platform.target_os == OS::Windows),
-            "unix" => Ok(platform.target_os == OS::Linux || platform.target_os == OS::MacOS),
+            "windows" => Ok(platform_.target_os == OS::Windows),
+            "unix" => Ok(platform_.target_os == OS::Linux || platform_.target_os == OS::MacOS),
             "test" | "debug_assertions" | "proc_macro" => {
                 // Known families that always evaluate to false. List grabbed from
                 // https://docs.rs/cargo-platform/0.1.1/src/cargo_platform/lib.rs.html#76.
@@ -101,16 +105,16 @@ fn eval_expr(spec: &Expr, platform: &Platform) -> Result<bool, EvalError> {
                 // An unknown family.
                 // TODO: we may want to evaluate these to false as well, not sure.
                 Err(EvalError::UnknownOption(family.clone()))
-            },
+            }
         },
         // supports only target_os currently
         Expr::TestEqual((Atom::Ident(ref name), Atom::Value(ref value))) => {
             if name == "target_os" {
-                Ok(value == platform.target_os.as_str())
+                Ok(value == platform_.target_os.as_str())
             } else if name == "target_env" {
-                Ok(value == platform.target_env.map(|e| e.as_str()).unwrap_or(""))
+                Ok(value == platform_.target_env.map(|e| e.as_str()).unwrap_or(""))
             } else if name == "target_arch" {
-                Ok(value == platform.target_arch.as_str())
+                Ok(value == platform_.target_arch.as_str())
             } else if name == "target_vendor" {
                 // hack for ring's wasm support
                 Ok(value == "unknown")
@@ -119,6 +123,8 @@ fn eval_expr(spec: &Expr, platform: &Platform) -> Result<bool, EvalError> {
                 // this to false. See
                 // https://github.com/rust-lang/cargo/issues/7442 for more details.
                 Ok(false)
+            } else if name == "target_feature" {
+                Ok(platform.target_features().matches(value.as_str()))
             } else {
                 Err(EvalError::UnknownOption(name.clone()))
             }
@@ -200,5 +206,61 @@ mod tests {
                 Err(EvalError::UnknownOption(_))
             ));
         }
+    }
+
+    #[test]
+    fn test_target_feature() {
+        // All target features are accepted by default.
+        assert_eq!(
+            eval("cfg(target_feature = \"sse\")", "x86_64-unknown-linux-gnu"),
+            Ok(true),
+        );
+        assert_eq!(
+            eval(
+                "cfg(target_feature = \"atomics\")",
+                "x86_64-unknown-linux-gnu",
+            ),
+            Ok(true),
+        );
+        assert_eq!(
+            eval(
+                "cfg(not(target_feature = \"fxsr\"))",
+                "x86_64-unknown-linux-gnu",
+            ),
+            Ok(false),
+        );
+
+        fn eval_ext(spec: &str, platform: &str) -> Result<bool, EvalError> {
+            let platform = Platform::new(
+                platform,
+                TargetFeatures::features(&["sse", "sse2"]),
+            )
+            .expect("platform should be found");
+            let spec: TargetSpec = spec.parse().unwrap();
+            spec.eval(&platform)
+        }
+
+        assert_eq!(
+            eval_ext("cfg(target_feature = \"sse\")", "x86_64-unknown-linux-gnu"),
+            Ok(true),
+        );
+        assert_eq!(
+            eval_ext(
+                "cfg(not(target_feature = \"sse\"))",
+                "x86_64-unknown-linux-gnu",
+            ),
+            Ok(false),
+        );
+        assert_eq!(
+            eval_ext("cfg(target_feature = \"fxsr\")", "x86_64-unknown-linux-gnu"),
+            Ok(false),
+        );
+        assert_eq!(
+            eval_ext(
+                "cfg(not(target_feature = \"fxsr\"))",
+                "x86_64-unknown-linux-gnu",
+            ),
+            Ok(true),
+        );
     }
 }

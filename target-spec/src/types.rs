@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use crate::parser::parse_impl;
+use crate::platform::Platform;
 use crate::{eval_target, EvalError, ParseError};
 use std::str::FromStr;
 
@@ -12,12 +13,21 @@ use std::str::FromStr;
 /// ## Examples
 ///
 /// ```
-/// use target_spec::TargetSpec;
+/// use target_spec::{Platform, TargetFeatures, TargetSpec};
+///
+/// let i686_windows = Platform::new("i686-pc-windows-gnu", TargetFeatures::All).unwrap();
+/// let x86_64_mac = Platform::new("x86_64-apple-darwin", TargetFeatures::none()).unwrap();
+/// let i686_linux = Platform::new("i686-unknown-linux-gnu", TargetFeatures::features(&["sse2"])).unwrap();
 ///
 /// let spec: TargetSpec = "cfg(any(windows, target_arch = \"x86_64\"))".parse().unwrap();
-/// assert!(spec.eval("i686-pc-windows-gnu").unwrap(), "i686 Windows");
-/// assert!(spec.eval("x86_64-apple-darwin").unwrap(), "x86_64 MacOS");
-/// assert!(!spec.eval("i686-unknown-linux-gnu").unwrap(), "i686 Linux (should not match)");
+/// assert!(spec.eval(&i686_windows).unwrap(), "i686 Windows");
+/// assert!(spec.eval(&x86_64_mac).unwrap(), "x86_64 MacOS");
+/// assert!(!spec.eval(&i686_linux).unwrap(), "i686 Linux (should not match)");
+///
+/// let spec: TargetSpec = "cfg(any(target_feature = \"sse2\", target_feature = \"sse\"))".parse().unwrap();
+/// assert!(spec.eval(&i686_windows).unwrap(), "i686 Windows matches all features");
+/// assert!(!spec.eval(&x86_64_mac).unwrap(), "x86_64 MacOS matches no features");
+/// assert!(spec.eval(&i686_linux).unwrap(), "i686 Linux matches some features");
 /// ```
 #[derive(Clone, Debug)]
 pub struct TargetSpec {
@@ -25,8 +35,10 @@ pub struct TargetSpec {
 }
 
 impl TargetSpec {
-    /// Evaluates this specification against the given platform triple.
-    pub fn eval(&self, platform: &str) -> Result<bool, EvalError> {
+    /// Evaluates this specification against the given platform triple, defaulting to accepting all
+    /// target features.
+    #[inline]
+    pub fn eval(&self, platform: &Platform<'_>) -> Result<bool, EvalError> {
         eval_target(&self.target, platform)
     }
 }

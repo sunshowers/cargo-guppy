@@ -90,7 +90,7 @@ mod small {
 
         let feature_graph = graph.feature_graph();
         assert_eq!(feature_graph.feature_count(), 492, "feature count");
-        assert_eq!(feature_graph.link_count(), 609, "link count");
+        assert_eq!(feature_graph.link_count(), 608, "link count");
         let root_ids: Vec<_> = feature_graph
             .select_workspace(all_filter())
             .into_root_ids(DependencyDirection::Forward)
@@ -188,6 +188,7 @@ mod small {
             .edge
             .normal()
             .expect("bytes is a normal dependency");
+        println!("{:?}", metadata);
         assert_eq!(
             metadata.features(),
             &["default".to_string(), "std".to_string()]

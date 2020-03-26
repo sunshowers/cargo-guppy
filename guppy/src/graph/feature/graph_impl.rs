@@ -412,6 +412,17 @@ impl FeatureNode {
         }
     }
 
+    /// Returns a new feature node, can also be the base.
+    pub(in crate::graph) fn new_opt(
+        package_ix: NodeIndex<PackageIx>,
+        feature_idx: Option<usize>,
+    ) -> Self {
+        Self {
+            package_ix,
+            feature_idx,
+        }
+    }
+
     fn from_id(feature_graph: &FeatureGraph<'_>, id: FeatureId<'_>) -> Option<Self> {
         let metadata = feature_graph.package_graph.metadata(id.package_id())?;
         match id.feature() {
@@ -421,17 +432,6 @@ impl FeatureNode {
             )),
             None => Some(FeatureNode::base(metadata.package_ix)),
         }
-    }
-
-    pub(super) fn base_and_all_features<'a>(
-        package_ix: NodeIndex<PackageIx>,
-        feature_idxs: impl IntoIterator<Item = usize> + 'a,
-    ) -> impl Iterator<Item = FeatureNode> + 'a {
-        iter::once(Self::base(package_ix)).chain(
-            feature_idxs
-                .into_iter()
-                .map(move |feature_idx| Self::new(package_ix, feature_idx)),
-        )
     }
 
     pub(super) fn named_features<'g>(

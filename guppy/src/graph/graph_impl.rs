@@ -1004,7 +1004,7 @@ pub(super) enum TargetPredicate {
 
 impl TargetPredicate {
     /// Returns true if this is an empty predicate (i.e. will never match).
-    pub(super) fn is_empty(&self) -> bool {
+    pub(super) fn is_never(&self) -> bool {
         match self {
             TargetPredicate::Always => false,
             TargetPredicate::Specs(specs) => specs.is_empty(),

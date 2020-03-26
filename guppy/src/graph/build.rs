@@ -192,7 +192,6 @@ impl<'a> GraphBuildState<'a> {
             .dependencies
             .into_iter()
             .filter_map(|dep| {
-                println!("** dep name: {}, optional: {}", dep.name, dep.optional);
                 if dep.optional {
                     match dep.rename {
                         Some(rename) => Some(rename.into_boxed_str()),
@@ -211,7 +210,6 @@ impl<'a> GraphBuildState<'a> {
             .map(|(feature, deps)| (feature.into_boxed_str(), Some(deps)))
             .chain(optional_deps)
             .collect();
-        println!("FOR ID: {}, features: {:?}", package.id, features);
 
         Ok((
             package.id.clone(),
@@ -579,43 +577,60 @@ impl DependencyReq {
 impl DependencyReqImpl {
     fn add_instance(&mut self, from_id: &PackageId, dep: &Dependency) -> Result<(), Error> {
         // target_spec is None if this is not a platform-specific dependency.
-        let target_spec = dep.target.as_ref().map(|spec_or_triple| {
-            // This is a platform-specific dependency, so add it to the list of specs.
-            let spec_or_triple = format!("{}", spec_or_triple);
-            let target_spec: TargetSpec = spec_or_triple.parse().map_err(|err| {
-                Error::PackageGraphConstructError(format!(
-                    "for package '{}': for dependency '{}', parsing target '{}' failed: {}",
-                    from_id, dep.name, spec_or_triple, err
-                ))
-            })?;
-            Arc::new(target_spec)
-        });
+        let target_spec = match dep.target.as_ref() {
+            Some(spec_or_triple) => {
+                // This is a platform-specific dependency, so add it to the list of specs.
+                let spec_or_triple = format!("{}", spec_or_triple);
+                let target_spec: TargetSpec = spec_or_triple.parse().map_err(|err| {
+                    Error::PackageGraphConstructError(format!(
+                        "for package '{}': for dependency '{}', parsing target '{}' failed: {}",
+                        from_id, dep.name, spec_or_triple, err
+                    ))
+                })?;
+                Some(Arc::new(target_spec))
+            }
+            None => None,
+        };
 
-        self.build_if.add_spec(target_spec.clone());
+        self.build_if.add_spec(target_spec.as_ref());
         if dep.uses_default_features {
-            self.default_features_if.add_spec(target_spec.clone());
+            self.default_features_if.add_spec(target_spec.as_ref());
         }
         self.target_features
             .push((target_spec, dep.features.clone()));
+        Ok(())
     }
 }
 
 impl TargetPredicate {
-    fn set_always(&mut self) {
-        mem::replace(self, TargetPredicate::Always);
+    pub(super) fn extend(&mut self, other: &TargetPredicate) {
+        // &mut *self is a reborrow to allow mem::replace to work below.
+        match (&mut *self, other) {
+            (TargetPredicate::Always, _) => {
+                // Always stays the same since it means all specs are included.
+            }
+            (TargetPredicate::Specs(_), TargetPredicate::Always) => {
+                // Mark self as Always.
+                mem::replace(self, TargetPredicate::Always);
+            }
+            (TargetPredicate::Specs(specs), TargetPredicate::Specs(other)) => {
+                specs.extend_from_slice(other.as_slice());
+            }
+        }
     }
 
-    fn add_spec(&mut self, spec: Option<Arc<TargetSpec>>) {
-        match (self, spec) {
+    pub(super) fn add_spec(&mut self, spec: Option<&Arc<TargetSpec>>) {
+        // &mut *self is a reborrow to allow mem::replace to work below.
+        match (&mut *self, spec) {
             (TargetPredicate::Always, _) => {
                 // Always stays the same since it means all specs are included.
             }
             (TargetPredicate::Specs(_), None) => {
-                // Mark this as Always.
+                // Mark self as Always.
                 mem::replace(self, TargetPredicate::Always);
             }
             (TargetPredicate::Specs(specs), Some(spec)) => {
-                specs.push(spec);
+                specs.push(spec.clone());
             }
         }
     }

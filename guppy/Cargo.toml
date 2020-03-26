@@ -27,6 +27,7 @@ circle-ci = { repository = "calibra/cargo-guppy", branch = "master"}
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+arrayvec = "0.5.1"
 cargo_metadata = "0.9"
 derivative = "2"
 fixedbitset = { version = "0.2.0", default-features = false }

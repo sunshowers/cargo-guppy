@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use crate::graph::{
-    cargo_version_matches, DependencyEdge, DependencyMetadata, DependencyReq,
-    DependencyReqImpl, PackageGraph, PackageGraphData, PackageIx, PackageMetadata, TargetPredicate,
-    Workspace,
+    cargo_version_matches, DependencyEdge, DependencyMetadata, DependencyReq, DependencyReqImpl,
+    PackageGraph, PackageGraphData, PackageIx, PackageMetadata, TargetPredicate, Workspace,
 };
 use crate::{current_platform, Error, Metadata, PackageId};
 use cargo_metadata::{Dependency, DependencyKind, NodeDep, Package, Resolve};
@@ -193,6 +192,7 @@ impl<'a> GraphBuildState<'a> {
             .dependencies
             .into_iter()
             .filter_map(|dep| {
+                println!("** dep name: {}, optional: {}", dep.name, dep.optional);
                 if dep.optional {
                     match dep.rename {
                         Some(rename) => Some(rename.into_boxed_str()),
@@ -211,6 +211,7 @@ impl<'a> GraphBuildState<'a> {
             .map(|(feature, deps)| (feature.into_boxed_str(), Some(deps)))
             .chain(optional_deps)
             .collect();
+        println!("FOR ID: {}, features: {:?}", package.id, features);
 
         Ok((
             package.id.clone(),
@@ -577,42 +578,25 @@ impl DependencyReq {
 
 impl DependencyReqImpl {
     fn add_instance(&mut self, from_id: &PackageId, dep: &Dependency) -> Result<(), Error> {
-        match &dep.target {
-            Some(spec_or_triple) => {
-                // This is a platform-specific dependency, so add it to the list of specs.
-                let spec_or_triple = format!("{}", spec_or_triple);
-                let target_spec: TargetSpec = spec_or_triple.parse().map_err(|err| {
-                    Error::PackageGraphConstructError(format!(
-                        "for package '{}': for dependency '{}', parsing target '{}' failed: {}",
-                        from_id, dep.name, spec_or_triple, err
-                    ))
-                })?;
-                let target_spec = Arc::new(target_spec);
-                self.build_if.add_spec(target_spec.clone());
-                if dep.uses_default_features {
-                    self.default_features_if.add_spec(target_spec.clone());
-                }
-                self.target_features
-                    .push((Some(target_spec), dep.features.clone()));
-            }
-            None => {
-                // This is not a platform-specific dependency, so it's always included.
-                self.build_if.set_always();
-                if dep.uses_default_features {
-                    self.default_features_if.set_always();
-                }
-                self.target_features.push((None, dep.features.clone()));
-            }
+        // target_spec is None if this is not a platform-specific dependency.
+        let target_spec = dep.target.as_ref().map(|spec_or_triple| {
+            // This is a platform-specific dependency, so add it to the list of specs.
+            let spec_or_triple = format!("{}", spec_or_triple);
+            let target_spec: TargetSpec = spec_or_triple.parse().map_err(|err| {
+                Error::PackageGraphConstructError(format!(
+                    "for package '{}': for dependency '{}', parsing target '{}' failed: {}",
+                    from_id, dep.name, spec_or_triple, err
+                ))
+            })?;
+            Arc::new(target_spec)
+        });
+
+        self.build_if.add_spec(target_spec.clone());
+        if dep.uses_default_features {
+            self.default_features_if.add_spec(target_spec.clone());
         }
-
-        Ok(())
-    }
-
-    fn all_features(&self) -> impl Iterator<Item = &str> {
         self.target_features
-            .iter()
-            .flat_map(|(_, features)| features)
-            .map(|s| s.as_str())
+            .push((target_spec, dep.features.clone()));
     }
 }
 
@@ -621,12 +605,16 @@ impl TargetPredicate {
         mem::replace(self, TargetPredicate::Always);
     }
 
-    fn add_spec(&mut self, spec: Arc<TargetSpec>) {
-        match self {
-            TargetPredicate::Always => {
+    fn add_spec(&mut self, spec: Option<Arc<TargetSpec>>) {
+        match (self, spec) {
+            (TargetPredicate::Always, _) => {
                 // Always stays the same since it means all specs are included.
             }
-            TargetPredicate::Specs(specs) => {
+            (TargetPredicate::Specs(_), None) => {
+                // Mark this as Always.
+                mem::replace(self, TargetPredicate::Always);
+            }
+            (TargetPredicate::Specs(specs), Some(spec)) => {
                 specs.push(spec);
             }
         }

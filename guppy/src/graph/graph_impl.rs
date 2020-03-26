@@ -986,6 +986,15 @@ pub(super) struct DependencyReqImpl {
     pub(super) target_features: Vec<(Option<Arc<TargetSpec>>, Vec<String>)>,
 }
 
+impl DependencyReqImpl {
+    pub(super) fn all_features(&self) -> impl Iterator<Item = &str> {
+        self.target_features
+            .iter()
+            .flat_map(|(_, features)| features)
+            .map(|s| s.as_str())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) enum TargetPredicate {
     Always,
@@ -994,6 +1003,14 @@ pub(super) enum TargetPredicate {
 }
 
 impl TargetPredicate {
+    /// Returns true if this is an empty predicate (i.e. will never match).
+    pub(super) fn is_empty(&self) -> bool {
+        match self {
+            TargetPredicate::Always => false,
+            TargetPredicate::Specs(specs) => specs.is_empty(),
+        }
+    }
+
     /// Evaluates this target against the given platform triple.
     pub(super) fn eval(&self, platform: &str) -> Result<bool, EvalError> {
         match self {

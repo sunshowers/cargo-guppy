@@ -69,7 +69,9 @@ pub(crate) static METADATA_TARGETS1_LAZY_STATIC_02: &str =
 pub(crate) static METADATA_TARGETS1_LAZY_STATIC_01: &str =
     "lazy_static 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)";
 pub(crate) static METADATA_TARGETS1_BYTES: &str =
-    "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)";
+    "bytes 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)";
+pub(crate) static METADATA_TARGETS1_DEP_A: &str =
+    "dep-a 0.1.0 (path+file:///Users/fakeuser/local/testcrates/dep-a)";
 
 pub(crate) static METADATA_LIBRA: &str = include_str!("../../fixtures/large/metadata_libra.json");
 pub(crate) static METADATA_LIBRA_ADMISSION_CONTROL_SERVICE: &str =
@@ -773,6 +775,7 @@ impl FixtureDetails {
             ("lazy_static", METADATA_TARGETS1_LAZY_STATIC_02),
             ("lazy_static", METADATA_TARGETS1_LAZY_STATIC_01),
             ("bytes", METADATA_TARGETS1_BYTES),
+            ("dep-a", METADATA_TARGETS1_DEP_A),
         ])
         .insert_into(&mut details);
 

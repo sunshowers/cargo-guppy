@@ -7,11 +7,13 @@ use crate::graph::{
     DependencyDirection, DependencyLink, DotWrite, PackageDotVisitor, PackageMetadata,
 };
 use crate::PackageId;
+use platforms::platform::tier1;
 use std::fmt;
 use std::iter;
 
 mod small {
     use super::*;
+    use crate::graph::DependencyStatus;
     use crate::unit_tests::fixtures::package_id;
     use pretty_assertions::assert_eq;
 
@@ -147,30 +149,26 @@ mod small {
 
     #[test]
     fn metadata_targets1() {
-        // TODO: Figure out the resolution logic here -- it looks like it works on two levels:
-        // 1. If a package is included at all
-        // 2. Given that it is included, what features it's built with
+        // In the testcrate:
         //
-        // Also check for the difference between cargo metadata --all-features and just cargo
-        // metadata.
-
-        // for the testcrate:
+        //   [dependencies]
+        //   lazy_static = "1"
+        //   bytes = { version = "0.5", default-features = false, features = ["serde"] }
+        //   dep-a = { path = "../dep-a", optional = true }
         //
-        // [dependencies]
-        // lazy_static = "1"
-        // bytes = { version = "0.5", optional = true, default-features = false, features = ["serde"] }
+        //   [target.'cfg(not(windows))'.dependencies]
+        //   lazy_static = "0.2"
+        //   dep-a = { path = "../dep-a", features = ["foo"] }
         //
-        // [target.'cfg(not(windows))'.dependencies]
-        // lazy_static = "0.2"
+        //   [target.'cfg(windows)'.dev-dependencies]
+        //   lazy_static = "0.1"
         //
-        // [target.'cfg(windows)'.dev-dependencies]
-        // lazy_static = "0.1"
+        //   [target.'cfg(target_arch = "x86")'.dependencies]
+        //   bytes = { version = "=0.5.3", optional = false }
+        //   dep-a = { path = "../dep-a", features = ["bar"] }
         //
-        // [target.'cfg(target_arch = "x86_64")'.dependencies]
-        // bytes = { version = "0.5", optional = false, default-features = false, features = ["std"] }
-        //
-        // [target.x86_64-unknown-linux-gnu.dependencies]
-        // bytes = "0.5"
+        //   [target.x86_64-unknown-linux-gnu.build-dependencies]
+        //   bytes = { version = "0.5.2", optional = true, default-features = false, features = ["std"] }
 
         let metadata_targets1 = Fixture::metadata_targets1();
         metadata_targets1.verify();
@@ -188,11 +186,37 @@ mod small {
             .edge
             .normal()
             .expect("bytes is a normal dependency");
-        println!("{:?}", metadata);
+        println!("metadata: {:?}", metadata);
+
+        let x86_64_linux = tier1::X86_64_UNKNOWN_LINUX_GNU.target_triple;
+        let i686_windows = tier1::I686_PC_WINDOWS_MSVC.target_triple;
+
+        // As a normal dependency, bytes is mandatory everywhere.
         assert_eq!(
-            metadata.features(),
-            &["default".to_string(), "std".to_string()]
+            metadata.build_status_on(x86_64_linux).unwrap(),
+            DependencyStatus::Always,
+            "bytes is mandatory on x86_64"
         );
+        assert_eq!(
+            metadata.build_status_on(i686_windows).unwrap(),
+            DependencyStatus::Always,
+            "bytes is mandatory on x86",
+        );
+
+        // As a normal dependency, bytes builds default features on x86 but nowhere else.
+        assert_eq!(
+            metadata.default_features_on(x86_64_linux).unwrap(),
+            DependencyStatus::Never,
+            "bytes never builds default features on x86_64",
+        );
+        assert_eq!(
+            metadata.default_features_on(i686_windows).unwrap(),
+            DependencyStatus::Always,
+            "bytes always builds default features on x86",
+        );
+
+        // This should be the union of all the features in the [dependencies] sections.
+        assert_eq!(metadata.features(), &["serde".to_string()]);
     }
 
     proptest_suite!(metadata_targets1);

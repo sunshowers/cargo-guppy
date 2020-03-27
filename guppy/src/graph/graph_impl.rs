@@ -822,7 +822,7 @@ impl DependencyMetadata {
     /// This will also return true if this dependency will never be included on this platform at
     /// all. To get finer-grained information, use the `build_status` method instead.
     pub fn optional(&self) -> bool {
-        self.current_status != DependencyStatus::Mandatory
+        self.current_status != DependencyStatus::Always
     }
 
     /// Returns the build status of this dependency on the platform `guppy` is running on.
@@ -904,7 +904,7 @@ impl DependencyMetadata {
 /// once_cell = "1"
 /// ```
 ///
-/// The dependency and default features are *mandatory* on all platforms.
+/// The dependency and default features are *always* built on all platforms.
 ///
 /// ```toml
 /// [dependencies]
@@ -929,18 +929,18 @@ impl DependencyMetadata {
 /// once_cell = { version = "1", optional = false, default-features = false }
 /// ```
 ///
-/// On Windows, the dependency is mandatory and default features are optional (i.e. enabled if the
-/// `once_cell` feature is turned on).
+/// On Windows, the dependency is *always* built and default features are *optional* (i.e. enabled
+/// if the `once_cell` feature is turned on).
 ///
-/// On Unix platforms, the dependency and default features are both optional.
+/// On Unix platforms, the dependency and default features are both *optional*.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum DependencyStatus {
-    /// This dependency or default features are always included in the build on this platform.
-    Mandatory,
+    /// This dependency or default features are always built on this platform.
+    Always,
     /// This dependency or default features are optionally included in the build on this platform.
     Optional,
-    /// This dependency or default features are never included in the build in this platform, even
-    /// if the optional dependency is turned on.
+    /// This dependency or default features are never built on this platform, even if the optional
+    /// dependency is turned on.
     Never,
 }
 
@@ -970,7 +970,7 @@ impl DependencyReq {
             err: Box::new(err),
         };
         if pred_fn(&self.mandatory).eval(platform).map_err(map_err)? {
-            return Ok(DependencyStatus::Mandatory);
+            return Ok(DependencyStatus::Always);
         }
         if pred_fn(&self.optional).eval(platform).map_err(map_err)? {
             return Ok(DependencyStatus::Optional);

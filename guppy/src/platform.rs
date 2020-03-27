@@ -4,6 +4,8 @@
 use once_cell::sync::Lazy;
 use platforms::guess_current;
 
+/// Represents a specific platform to evaluate targets against.
+
 /// Returns the platform (target triple) that `guppy` believes it is running on.
 ///
 /// This is not perfect, and may return `None` on some esoteric platforms.

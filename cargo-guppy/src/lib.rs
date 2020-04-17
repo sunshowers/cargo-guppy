@@ -6,6 +6,8 @@ mod diff;
 
 pub use crate::core::*;
 
+use guppy::graph::cargo::CargoOptions;
+use guppy::graph::feature::default_filter;
 use guppy::graph::DependencyDirection;
 use guppy::{
     graph::{DotWrite, PackageDotVisitor, PackageGraph, PackageLink, PackageMetadata},
@@ -63,6 +65,69 @@ pub fn cmd_dups(filter_opts: &FilterOptions) -> Result<(), anyhow::Error> {
         let output = itertools::join(dupes.iter().map(|p| p.version()), ", ");
 
         println!("{} ({})", name, output);
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, StructOpt)]
+pub struct ResolveCargoOptions {
+    #[structopt(long = "package", short = "p")]
+    packages: Vec<String>,
+
+    #[structopt(long = "include-dev")]
+    /// Include dev-dependencies of initial packages (default: false)
+    include_dev: bool,
+
+    #[structopt(long = "target-platform")]
+    /// Evaluate against target platform triple (default: current platform)
+    target_platform: Option<String>,
+
+    #[structopt(long = "host-platform")]
+    /// Evaluate against host platform triple (default: current platform)
+    host_platform: Option<String>,
+}
+
+pub fn cmd_resolve_cargo(opts: &ResolveCargoOptions) -> Result<(), anyhow::Error> {
+    let target_platform = triple_to_platform(opts.target_platform.as_ref())?;
+    let host_platform = triple_to_platform(opts.host_platform.as_ref())?;
+    let cargo_opts = CargoOptions::new()
+        .with_dev_deps(opts.include_dev)
+        .with_target_platform(target_platform.as_ref())
+        .with_host_platform(host_platform.as_ref());
+
+    // TODO: allow package/feature/omitted selection
+    let mut command = MetadataCommand::new();
+    let pkg_graph = PackageGraph::from_command(&mut command)?;
+    let feature_graph = pkg_graph.feature_graph();
+
+    let query = if opts.packages.is_empty() {
+        feature_graph.query_workspace(default_filter())
+    } else {
+        let pkg_ids = opts
+            .packages
+            .iter()
+            .map(|name| pkg_graph.workspace().member_by_name(name).unwrap().id());
+        let package_query = pkg_graph.query_forward(pkg_ids).expect("valid package IDs");
+        feature_graph.query_packages(&package_query, default_filter())
+    };
+
+    let cargo_set = query.resolve_cargo(&cargo_opts)?;
+
+    println!("** target:");
+    for (package, features) in cargo_set
+        .target_features()
+        .packages_with_features::<Vec<_>>(DependencyDirection::Forward)
+    {
+        println!("{}: {:?}", package.name(), features);
+    }
+
+    println!("\n** host:");
+    for (package, features) in cargo_set
+        .host_features()
+        .packages_with_features::<Vec<_>>(DependencyDirection::Forward)
+    {
+        println!("{}: {:?}", package.name(), features);
     }
 
     Ok(())

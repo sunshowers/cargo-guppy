@@ -162,3 +162,15 @@ pub(crate) fn names_to_ids<'g: 'a, 'a>(
         }
     })
 }
+
+pub(crate) fn triple_to_platform(
+    triple: Option<&String>,
+) -> Result<Option<Platform>, anyhow::Error> {
+    match triple {
+        Some(triple) => match Platform::new(triple, TargetFeatures::Unknown) {
+            Some(platform) => Ok(Some(platform)),
+            None => Err(anyhow!("unrecognized triple '{}'", triple)),
+        },
+        None => Ok(Platform::current().cloned()),
+    }
+}
